@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>跳转中…</title>
+<script>
+/* ============================================================
+ * 静态跳转网关（11 版，部署在 mjwebN.xyz 等域名上，纯静态托管即可）
+ *
+ * 流程：页面加载 → 请求中心 API 查询当前路径
+ *        有配置 → 跳到配置目标
+ *        没配置/查询失败 → 跳到兜底地址
+ *
+ * 修改配置：只改下面「配置区」四行。
+ * ============================================================ */
+(function () {
+  'use strict';
+
+  // ================= 配置区 =================
+  var API      = 'https://td1888.xyz/api11'; // 中心查询接口（11 版）
+  var KEY      = '';                         // 中心后台设置了 API Key 才需要填
+  var FALLBACK = 'https://mjweb207.xyz';       // 查询失败时的兜底地址
+  var TIMEOUT  = 1000;                       // 查询超时（毫秒），超时走兜底
+  // ==========================================
+
+  var path = location.pathname;
+  if (path.length > 1 && path.charAt(path.length - 1) === '/') {
+    path = path.slice(0, -1); // /1/ → /1
+  }
+
+  var url = API + (API.indexOf('?') >= 0 ? '&' : '?')
+    + 'path=' + path
+    + '&d=' + encodeURIComponent(location.hostname)
+    + (KEY ? '&key=' + encodeURIComponent(KEY) : '');
+
+  var done = false;
+
+  function showArrived() {
+    document.title = '已到达';
+    if (document.body) {
+      document.body.innerHTML = '<p style="font-family:sans-serif;padding:24px">已到达目标页面（配置目标指向了当前地址）</p>';
+    }
+  }
+
+  function go(target) {
+    if (typeof target !== 'string' || !/^https?:\/\//i.test(target)) {
+      return false;
+    }
+    // 防死循环：目标恰好是当前地址时不跳
+    var cur = location.href.split('#')[0].replace(/\/+$/, '');
+    var tgt = target.split('#')[0].replace(/\/+$/, '');
+    if (cur === tgt) {
+      showArrived();
+      return true;
+    }
+    location.replace(target);
+    return true;
+  }
+
+  function finish(target) {
+    if (done) { return; }
+    if (go(target)) { done = true; return; }
+    fallback();
+  }
+
+  function fallback() {
+    if (done) { return; }
+    done = true;
+    if (!go(FALLBACK)) { showArrived(); }
+  }
+
+  // 防白屏：总超时兜底
+  setTimeout(fallback, TIMEOUT + 500);
+
+  if (!window.fetch) {
+    fallback();
+    return;
+  }
+
+  var controller = null;
+  if ('AbortController' in window) {
+    controller = new AbortController();
+    setTimeout(function () { try { controller.abort(); } catch (e) {} }, TIMEOUT);
+  }
+
+  fetch(url, controller ? { signal: controller.signal } : {})
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      if (j && j.ok && j.target) {
+        finish(j.target);
+      } else {
+        fallback();
+      }
+    })
+    .catch(function () {
+      fallback();
+    });
+})();
+</script>
+</head>
+<body>
+  <noscript>
+    <p style="font-family:sans-serif;padding:24px">浏览器未启用 JavaScript，正在跳转…</p>
+    <meta http-equiv="refresh" content="0; url=https://td1888.xyz/">
+  </noscript>
+</body>
+</html>

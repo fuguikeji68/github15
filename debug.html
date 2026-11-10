@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>跳转 API 诊断</title>
+<style>
+body{font:14px/1.6 -apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;margin:0;background:#f5f7fa;color:#1f2937;padding:20px}
+h1{font-size:18px;margin:0 0 6px}
+code{background:#eef2f8;padding:1px 5px;border-radius:4px;font-family:Consolas,monospace}
+.box{background:#fff;border:1px solid #e5e9f0;border-radius:10px;padding:14px;margin:0 0 12px}
+.box b{display:block;margin-bottom:6px}
+pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto;font-size:12px;margin:0}
+</style>
+</head>
+<body>
+<h1>跳转 API 诊断</h1>
+<p>当前页面：<code id="here"></code></p>
+<p>诊断目标：<code id="api"></code></p>
+<div id="box"></div>
+<p style="color:#6b7280;font-size:12px;margin-top:18px">用法：本文件上传到 CF Pages（_redirects 里加 <code>/debug /debug.html 200</code>），打开 https://mjweb.xyz/debug 看结果。</p>
+<script>
+(function () {
+  'use strict';
+
+  // 与 index.html 里的 API 保持一致
+  var API = 'https://td1888.xyz/api11';
+  var PATHS = ['/1', '/2', '/abc'];
+
+  document.getElementById('here').textContent = location.href;
+  document.getElementById('api').textContent = API;
+
+  var box = document.getElementById('box');
+
+  function show(label, data) {
+    var d = document.createElement('div');
+    d.className = 'box';
+    var b = document.createElement('b');
+    b.textContent = label;
+    var pre = document.createElement('pre');
+    pre.textContent = (typeof data === 'string') ? data : JSON.stringify(data, null, 2);
+    d.appendChild(b);
+    d.appendChild(pre);
+    box.appendChild(d);
+  }
+
+  function test(path) {
+    var url = API + '?path=' + encodeURIComponent(path) + '&d=' + encodeURIComponent(location.hostname);
+    var out = { path: path, url: url };
+    return fetch(url, { cache: 'no-store' })
+      .then(function (r) {
+        out.httpStatus = r.status;
+        out.cors = r.headers.get('access-control-allow-origin');
+        out.contentType = r.headers.get('content-type');
+        return r.text().then(function (t) {
+          out.bodyFirst120 = t.slice(0, 120);
+          try {
+            out.json = JSON.parse(t);
+            out.target = out.json && out.json.target;
+          } catch (e) {
+            out.parseError = String(e);
+          }
+          return out;
+        });
+      })
+      .catch(function (e) {
+        out.fetchError = String(e);
+        return out;
+      });
+  }
+
+  (async function () {
+    for (var i = 0; i < PATHS.length; i++) {
+      var r = await test(PATHS[i]);
+      show('请求 path=' + PATHS[i], r);
+    }
+    show('怎么看结果', [
+      'httpStatus=200 + cors=* + target 有值  → 后端完全正常，问题在页面配置或 CF Pages 缓存/旧部署。',
+      'httpStatus=404                       → /api11 伪静态没生效，或 index11.php 等文件没传到站点根目录。',
+      'httpStatus=403                       → 被防火墙/WAF/宝塔拦截。',
+      'fetchError 含 CORS                   → 响应缺 Access-Control-Allow-Origin 头（后端不是 11 版或 PHP 没执行）。',
+      'fetchError 含 failed/网络            → 网络/DNS 或 Cloudflare 拦截。'
+    ].join('\n'));
+  })();
+})();
+</script>
+</body>
+</html>
